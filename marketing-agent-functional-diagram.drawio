@@ -1,0 +1,115 @@
+<mxfile host="app.diagrams.net" agent="Codex">
+  <diagram id="marketing-functional-cto" name="Marketing Agent - Functional View">
+    <mxGraphModel dx="1688" dy="752" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#0B1F3A;" value="Marketing Agent Platform - Functional Diagram" vertex="1">
+          <mxGeometry height="40" width="940" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sub" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=13;fontColor=#4A5A73;" value="Focus: business flow, controls, observability, and scalability" vertex="1">
+          <mxGeometry height="24" width="700" x="40" y="58" as="geometry" />
+        </mxCell>
+        <mxCell id="channel_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F1FF;strokeColor=#4D7CFE;fontSize=14;fontStyle=1;" value="User Channels" vertex="1">
+          <mxGeometry height="210" width="220" x="40" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="channel_web" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D7CFE;fontSize=12;" value="Web / Frontend Apps" vertex="1">
+          <mxGeometry height="40" width="180" x="60" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="channel_api" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D7CFE;fontSize=12;" value="Internal API Consumers" vertex="1">
+          <mxGeometry height="40" width="180" x="60" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="channel_ops" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4D7CFE;fontSize=12;" value="Ops / Analytics Users" vertex="1">
+          <mxGeometry height="40" width="180" x="60" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF5E6;strokeColor=#E69A00;fontSize=14;fontStyle=1;" value="&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="210" width="280" x="300" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway_chat" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E69A00;fontSize=12;" value="/marketing-agent/chat" vertex="1">
+          <mxGeometry height="36" width="220" x="330" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway_cost" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E69A00;fontSize=12;" value="/marketing-agent/cost/*" vertex="1">
+          <mxGeometry height="36" width="220" x="330" y="178" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway_health" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E69A00;fontSize=12;" value="/marketing-agent/health" vertex="1">
+          <mxGeometry height="36" width="220" x="330" y="226" as="geometry" />
+        </mxCell>
+        <mxCell id="orchestration_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E9FBEF;strokeColor=#31A35A;fontSize=14;fontStyle=1;" value="" vertex="1">
+          <mxGeometry height="250" width="320" x="650" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="orch_guardrails" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#31A35A;fontSize=12;" value="Input Checks and Guardrails&#xa;(scope, safety, policy)" vertex="1">
+          <mxGeometry height="52" width="260" x="680" y="157" as="geometry" />
+        </mxCell>
+        <mxCell id="orch_context" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#31A35A;fontSize=12;" value="Context and Session Handling&lt;br&gt;(retains context )" vertex="1">
+          <mxGeometry height="52" width="260" x="680" y="219" as="geometry" />
+        </mxCell>
+        <mxCell id="orch_router" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#31A35A;fontSize=12;" value="Provider and Model Routing&#xa;(Gemini / Bedrock / others)" vertex="1">
+          <mxGeometry height="52" width="260" x="680" y="281" as="geometry" />
+        </mxCell>
+        <mxCell id="provider_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3EEFF;strokeColor=#7B5CC7;fontSize=14;fontStyle=1;" value="" vertex="1">
+          <mxGeometry height="250" width="260" x="1040" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="provider_gemini" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B5CC7;fontSize=12;" value="Google Gemini" vertex="1">
+          <mxGeometry height="42" width="200" x="1070" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="provider_bedrock" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B5CC7;fontSize=12;" value="AWS Bedrock&#xa;(Sonnet / Opus via model id)" vertex="1">
+          <mxGeometry height="52" width="200" x="1070" y="214" as="geometry" />
+        </mxCell>
+        <mxCell id="provider_future" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B5CC7;fontSize=12;" value="Future / Backup Providers" vertex="1">
+          <mxGeometry height="42" width="200" x="1070" y="278" as="geometry" />
+        </mxCell>
+        <mxCell id="ops_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEFEF;strokeColor=#D64646;fontSize=14;fontStyle=1;" value="&#xa;&lt;span data-mx-given-colors=&quot;{&amp;quot;color&amp;quot;:&amp;quot;rgb(255, 255, 255)&amp;quot;,&amp;quot;background-color&amp;quot;:&amp;quot;rgb(27, 29, 30)&amp;quot;}&quot; style=&quot;forced-color-adjust: none; box-shadow: none !important; font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); background-color: light-dark(rgb(27, 29, 30), rgb(211, 213, 214)); float: none; display: inline !important;&quot;&gt;Operations and Governance&lt;/span&gt;&lt;br style=&quot;forced-color-adjust: none; box-shadow: none !important; color: rgb(255, 255, 255); font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(27, 29, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;&quot;&gt;&#xa;&#xa;" vertex="1">
+          <mxGeometry height="312.5" width="980" x="290" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="ops_logs" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D64646;fontSize=12;" value="Query and Audit Logs&#xa;(request, response, status)" vertex="1">
+          <mxGeometry height="70" width="220" x="360" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="ops_cost" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D64646;fontSize=12;" value="Cost Tracking&#xa;(tokens, model-wise cost)" vertex="1">
+          <mxGeometry height="70" width="220" x="660" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="ops_data" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D64646;fontSize=12;" value="MongoDB Operational Store&#xa;(users, query_logs, cost_logs, vector docs)" vertex="1">
+          <mxGeometry height="120" width="160" x="690" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="ops_outcome" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9D7;strokeColor=#C8A100;fontSize=12;fontStyle=1;" value="Outcomes:&lt;br&gt;1) Faster campaign response cycles&lt;br&gt;2) Cost visibility and governance&lt;br&gt;3) Provider flexibility and resilience" vertex="1">
+          <mxGeometry height="90" width="350" x="920" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="channel_box" style="endArrow=classic;html=1;strokeColor=#4D7CFE;strokeWidth=2;" target="gateway_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="gateway_box" style="endArrow=classic;html=1;strokeColor=#E69A00;strokeWidth=2;" target="orchestration_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="orchestration_box" style="endArrow=classic;html=1;strokeColor=#31A35A;strokeWidth=2;" target="provider_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="provider_box" style="endArrow=classic;html=1;strokeColor=#7B5CC7;strokeWidth=2;" target="orchestration_box" value="responses + usage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="gateway_box" style="endArrow=classic;html=1;strokeColor=#D64646;strokeWidth=2;" target="ops_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="orchestration_box" style="endArrow=classic;html=1;strokeColor=#D64646;strokeWidth=2;" target="ops_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="ops_logs" style="endArrow=classic;html=1;strokeColor=#D64646;strokeWidth=2;" target="ops_data" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="ops_cost" style="endArrow=classic;html=1;strokeColor=#D64646;strokeWidth=2;" target="ops_data" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wB9YwSxylncCep66KSaT-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span data-mx-given-colors=&quot;{&amp;quot;color&amp;quot;:&amp;quot;rgb(255, 255, 255)&amp;quot;,&amp;quot;background-color&amp;quot;:&amp;quot;rgb(27, 29, 30)&amp;quot;}&quot; style=&quot;forced-color-adjust: none; box-shadow: none !important; font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; color: light-dark(rgb(255, 255, 255), rgb(18, 18, 18)); background-color: light-dark(rgb(27, 29, 30), rgb(211, 213, 214)); float: none; display: inline !important;&quot;&gt;Unified API Gateway (FastAPI)&lt;/span&gt;&lt;br style=&quot;forced-color-adjust: none; box-shadow: none !important; color: rgb(255, 255, 255); font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(27, 29, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;&quot;&gt;" vertex="1">
+          <mxGeometry height="40" width="230" x="335" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="wB9YwSxylncCep66KSaT-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E69A00;fontSize=12;" value="/marketing-agent/chat_with_files" vertex="1">
+          <mxGeometry height="36" width="220" x="330" y="274" as="geometry" />
+        </mxCell>
+        <mxCell id="wB9YwSxylncCep66KSaT-4" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(255, 255, 255); font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(27, 29, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;Marketing Orchestration Layer&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="240" x="690" y="117" as="geometry" />
+        </mxCell>
+        <mxCell id="picAcLKlYinSS9WLEVpk-4" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(255, 255, 255); font-family: Helvetica; font-size: 14px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(27, 29, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;LLM Provider Layer&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1090" y="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
