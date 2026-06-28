@@ -1,289 +1,293 @@
 # Marketing Agent Codebase Guide
 
-## 1. Purpose of This Document
-This document is meant to help a new engineer understand the `marketing_agent` service quickly enough to:
+## 1. Purpose
 
-- run it locally
-- understand the main request flows
-- trace how prompts, providers, files, logging, and cost work
-- safely make changes
-- debug common issues
+This guide is for engineers who need to understand, run, debug, or extend the `marketing_agent` service. It reflects the current implementation of the FastAPI service under `marketing_agent/`.
 
-This is not just a feature summary. It is an implementation-oriented guide for developers who need to work on the codebase.
+Use it to understand:
 
-## 2. What This Service Does
-The Marketing Agent is a FastAPI-based multi-provider GenAI service that supports:
+- the API entry points
+- request orchestration for chat, files, tool calling, logging, and cost
+- provider routing across Gemini, Bedrock, Vertex, and OpenAI-like backends
+- storage and generated file handling
+- quota, guardrails, and observability
+- where to make common changes safely
 
-- normal text chat
-- chat with attached files
-- marketing-specific and generic assistant behavior
-- context retention across sessions
-- file generation in `docx`, `pptx`, `pdf`, and `xlsx`
-- local or S3-backed file storage
-- provider routing across Gemini, Bedrock, Vertex, and OpenAI-like models
-- request logging, cost tracking, and usage quota monitoring
+For a file-by-file reference, see `MARKETING_AGENT_PYTHON_FILE_REFERENCE.md`.
 
-The current architecture is centered around one primary chat endpoint and a modular orchestration layer.
+## 2. What The Service Does
 
-## 3. High-Level Architecture
+The Marketing Agent is a FastAPI-based GenAI service for enterprise marketing and generic assistant workflows.
+
+It supports:
+
+- plain chat
+- deterministic no-LLM replies for simple small talk such as greetings
+- multipart chat with uploaded files
+- provider-native file analysis when supported
+- text extraction fallback when direct file handling is unavailable
+- generated deliverables in `docx`, `pptx`, `pdf`, and `xlsx`
+- LangChain tool calling for generated file workflows
+- context retention and session rollover
+- local or S3-backed storage
+- MongoDB logging for queries, users, costs, and session summaries
+- quota monitoring and blocking
+- LangSmith tracing when configured
+
+## 3. Runtime Architecture
+
 ```mermaid
 flowchart TD
-    A[Client / Frontend] --> B[FastAPI App]
-    B --> C[/chat endpoint]
-    C --> D[Guardrails + Quota Check]
-    D --> E[Context Preparation]
-    E --> F[File Service]
-    E --> G[LLM Router]
-    F --> G
-    G --> H[Provider Layer]
-    H --> I[Gemini]
-    H --> J[Bedrock]
-    H --> K[Vertex]
-    H --> L[OpenAI-like]
-    G --> M[Tool-based File Generation]
-    M --> N[Storage Backend]
-    N --> O[Local Storage]
-    N --> P[S3 Storage]
-    C --> Q[Query Logger + Cost Logger]
-    Q --> R[MongoDB]
+    Client[Client or Frontend] --> App[FastAPI app in main.py]
+    App --> Chat[POST /chat]
+    App --> Health[GET /health]
+    App --> History[GET /history and /sessions]
+    App --> Files[GET /files]
+    App --> Cost[GET /cost/*]
+
+    Chat --> Parse[Parse JSON or multipart request]
+    Parse --> DTO[Build ChatRequest]
+    DTO --> Quota[Usage quota check]
+    Quota --> Guardrails[Rule-based guardrails]
+    Guardrails --> SmallTalk[Small-talk shortcut]
+    SmallTalk -->|Matched| GenericReply[Return generic_response with 0 tokens]
+    SmallTalk -->|Not matched| Context[Prepare retained context]
+    Context --> FilePrep[Stage uploads and prepare attachments]
+    FilePrep --> Format[Infer requested output format]
+    Format --> Router[LLMRouter.route]
+
+    Router --> Provider[Provider layer]
+    Provider --> Gemini[Gemini]
+    Provider --> Bedrock[Bedrock]
+    Provider --> Vertex[Vertex]
+    Provider --> OpenAI[OpenAI-like]
+
+    Router -->|File requested| Tools[LangChain file generation tool]
+    Tools --> FileService[FileService.write_output]
+    FileService --> Storage[Local or S3 storage]
+
+    Provider --> Response[ProviderResult]
+    Storage --> Response
+    Response --> Logger[QueryLogger and CostLogger]
+    Logger --> Mongo[(MongoDB)]
+    Response --> ChatResponse[Return ChatResponse]
 ```
 
 ## 4. Main Entry Points
-### 4.1 App bootstrap
-Primary application entry:
 
-- [main.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/main.py)
+### App bootstrap
+
+File: `marketing_agent/main.py`
 
 Responsibilities:
 
-- configure logging
-- configure LangSmith tracing
-- initialize FastAPI
-- add request context middleware
-- register routers
-- patch OpenAPI schema for binary uploads
+- configure Python logging
+- load settings and configure LangSmith tracing before routers are imported
+- create the FastAPI app
+- add request-context middleware
+- add CORS middleware
+- include chat and cost routers
+- patch OpenAPI binary schemas for multipart uploads
+- run Uvicorn on port `8004` when executed directly
 
-### 4.2 Dependency injection
-Shared singleton-style dependencies:
+### Dependency wiring
 
-- [dependencies.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/dependencies.py)
+File: `marketing_agent/dependencies.py`
 
-This file constructs:
+This module exposes cached dependency factories for:
 
 - `Settings`
 - `MongoStore`
 - `LLMRouter`
-- `FileService`
 - `CostCalculator`
-- `ConversationContextManager`
 - `QueryLogger`
+- `ConversationContextManager`
+- `FileService`
 
-If you are changing object wiring, caching, or service composition, this is one of the first files to inspect.
+If you are changing shared object construction or adding a new singleton-style service, start here.
 
-## 5. Main Folder Structure
-### 5.1 API layer
-- `marketing_agent/api/routes_chat.py`
-- `marketing_agent/api/routes_cost.py`
-- `marketing_agent/api/chat_helpers.py`
+## 5. Folder Map
 
-### 5.2 Core configuration
-- `marketing_agent/core/config.py`
-- `marketing_agent/core/logging.py`
-
-### 5.3 LLM orchestration
-- `marketing_agent/llm/router.py`
-- `marketing_agent/llm/chains.py`
-- `marketing_agent/llm/context_manager.py`
-- `marketing_agent/llm/prompt_registry.py`
-- `marketing_agent/llm/guardrails.py`
-- `marketing_agent/llm/cost_tracking.py`
-
-### 5.4 Providers
-- `marketing_agent/llm/providers/base.py`
-- `marketing_agent/llm/providers/bedrock.py`
-- `marketing_agent/llm/providers/gemini.py`
-- `marketing_agent/llm/providers/vertex.py`
-- `marketing_agent/llm/providers/openai_like.py`
-
-### 5.5 Storage and file generation
-- `marketing_agent/storage/file_service.py`
-- `marketing_agent/storage/backends.py`
-- `marketing_agent/storage/text_extractors.py`
-- `marketing_agent/storage/docx_generation.py`
-- `marketing_agent/storage/pptx_generation.py`
-- `marketing_agent/storage/pdf_generation.py`
-- `marketing_agent/storage/xlsx_generation.py`
-
-### 5.6 Tool calling
-- `marketing_agent/tools/file_generation_tools.py`
-
-### 5.7 Persistence and observability
-- `marketing_agent/db/mongo.py`
-- `marketing_agent/db/schemas.py`
-- `marketing_agent/models/dto.py`
-- `marketing_agent/observability/query_logger.py`
-- `marketing_agent/observability/langsmith_tracing.py`
-- `marketing_agent/observability/request_context.py`
-
-### 5.8 Governance
-- `marketing_agent/governance/usage_quota.py`
-
-## 6. Primary Runtime Flow
-The most important file in the service is:
-
-- [routes_chat.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/api/routes_chat.py)
-
-This file owns the end-to-end chat request orchestration.
-
-### 6.1 Chat request flow
-```mermaid
-flowchart TD
-    A[Incoming /chat request] --> B[Parse JSON or multipart form]
-    B --> C[Build ChatRequest DTO]
-    C --> D[Run usage quota check]
-    D --> E[Run guardrails]
-    E --> F[Prepare context state]
-    F --> G[Stage uploaded files if any]
-    G --> H[Load attachments / file context]
-    H --> I[Infer output format from message]
-    I --> J[Route via LLMRouter]
-    J --> K[Provider response]
-    K --> L[Optional file generation]
-    L --> M[Build download URL and anchor]
-    M --> N[Log query + cost]
-    N --> O[Return ChatResponse]
+```text
+marketing_agent/
+  api/              FastAPI route handlers and request helper utilities
+  core/             configuration and logging setup
+  db/               MongoDB store and document schemas
+  governance/       quota evaluation
+  llm/              chains, routing, context, prompts, guardrails, cost
+  llm/providers/    Gemini, Bedrock, Vertex, OpenAI-like provider adapters
+  models/           API DTOs
+  observability/    query logging, request context, LangSmith setup
+  prompts/          YAML prompt profiles
+  storage/          storage backends, file service, extractors, renderers
+  tools/            LangChain file-generation tools
 ```
 
-### 6.2 Supported input modes
-The chat endpoint supports both:
+## 6. API Surface
 
-- `application/json`
-- `multipart/form-data`
+### Chat router
 
-This is important because the service is backward compatible for plain JSON chat while also supporting file uploads.
+File: `marketing_agent/api/routes_chat.py`
 
-### 6.3 Why `routes_chat.py` is large
-This file is currently the coordination layer for:
+Current endpoints:
 
-- endpoint definitions
-- request parsing
-- chat execution
-- file listing/downloading
-- history/session endpoints
-- health endpoint
+- `GET /health`
+- `POST /chat`
+- `GET /history`
+- `GET /sessions`
+- `POST /sessions/deactivate`
+- `GET /files`
 
-If future cleanup is needed, this is the best candidate for further extraction into smaller modules.
+`POST /chat` supports:
 
-## 7. Request Model vs Database Schemas
-This is a common source of confusion.
+- `application/json`, currently restricted to `department="marketing"` for compatibility
+- `multipart/form-data`, used for file uploads and full chat functionality
 
-### 7.1 DTOs
-API request/response contracts live in:
+There is no active `/chat-with-files` endpoint in the current router. File upload support is handled by `POST /chat` with multipart form data.
 
-- [dto.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/models/dto.py)
+### Cost router
 
-These are used for:
+File: `marketing_agent/api/routes_cost.py`
 
-- incoming request validation
-- outgoing response serialization
-- OpenAPI schema generation
+Current endpoints:
 
-Examples:
+- `GET /cost/summary`
+- `GET /cost/models`
+- `GET /cost/usage-monitor`
+
+## 7. Primary Chat Flow
+
+The most important runtime path is `_execute_chat()` in `routes_chat.py`.
+
+Current order:
+
+1. Create `request_id` and timer.
+2. Resolve initial provider hint from request or settings.
+3. Evaluate quota through `evaluate_usage_quota()`.
+4. Run `GuardrailEngine().evaluate()`.
+5. Check `_generic_small_talk_reply()` for simple greetings and thanks.
+6. Prepare conversation context if `retain_context=True`.
+7. Load provider attachments through `FileService.load_attachments()`.
+8. If direct files are not supported, build text context with `FileService.load_files_for_prompt()`.
+9. Infer requested output format from the message.
+10. Route through `LLMRouter.route()`.
+11. Normalize provider reply.
+12. Calculate cost.
+13. Write output file if needed.
+14. Build download URL and anchor if an output file exists.
+15. Log success and cost through `QueryLogger`.
+16. Return `ChatResponse`.
+
+Error paths map known file errors to user-friendly responses and log failures when query logging is enabled.
+
+## 8. No-LLM Small Talk Shortcut
+
+Simple generic messages are handled before context preparation and before provider routing.
+
+Implementation:
+
+- detector: `marketing_agent/api/chat_helpers.py::_generic_small_talk_reply`
+- caller: `marketing_agent/api/routes_chat.py::_execute_chat`
+
+Examples that return without an LLM call:
+
+- `hello`
+- `hi`
+- `how are you?`
+- `hello, how are you?`
+- `thanks`
+- `bye`
+
+The response uses:
+
+- `provider="generic_response"`
+- `model="generic_response"`
+- `route_decision="generic_small_talk_no_llm"`
+- `usage` tokens all `0`
+- `cost_usd=0.0`
+
+The detector is intentionally conservative. Mixed requests such as `hello create a campaign deck` still go through the normal LLM workflow.
+
+## 9. Request And Response Models
+
+File: `marketing_agent/models/dto.py`
+
+Main DTOs:
 
 - `ChatRequest`
 - `ChatResponse`
+- `TokenUsage`
+- `HealthResponse`
+- `HistoryItem`
+- `HistoryResponse`
+- `SessionItem`
+- `SessionListResponse`
+- `SessionDeactivateRequest`
+- `SessionDeactivateResponse`
+- `CostSummaryItem`
+- `CostSummaryResponse`
 - `UsageMonitorResponse`
+- `UsageMonitorDashboardResponse`
 
-### 7.2 DB Schemas
-MongoDB document models live in:
+Important behavior:
 
-- `marketing_agent/db/schemas.py`
+- `ChatRequest.department` is normalized to lowercase.
+- `ChatRequest.message` must be non-empty.
+- `temperature` is constrained from `0` to `2`.
 
-These are used for:
+## 10. Database Documents
 
-- logging to MongoDB
-- user documents
-- query logs
-- cost logs
-- session summaries
+File: `marketing_agent/db/schemas.py`
 
-Simple distinction:
+MongoDB document models:
 
-- `dto.py` = API contract
-- `schemas.py` = database document shape
+- `UserDocument`
+- `TokenUsageDocument`
+- `CostLogDocument`
+- `QueryLogDocument`
+- `VectorDocDocument`
+- `SessionSummaryDocument`
 
-## 8. Prompt System
-Prompt profiles are defined in:
+Simple rule:
 
-- `marketing_agent/prompts/prompts.yaml`
+- `models/dto.py` defines API contracts.
+- `db/schemas.py` defines MongoDB document shapes.
 
-Prompt loading is handled by:
+## 11. Provider Routing
 
-- [prompt_registry.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/llm/prompt_registry.py)
+File: `marketing_agent/llm/router.py`
 
-### 8.1 Current prompt profiles
-The service supports at least:
+`LLMRouter` owns:
 
-- `marketing`
-- `generic`
+- provider registry construction
+- provider readiness checks
+- prompt profile selection
+- default provider selection
+- model selection
+- context rollover summarization
+- direct file mode
+- text context mode
+- tool-calling mode
+- token usage merging for multi-call workflows
 
-### 8.2 How prompt selection works
-The router normalizes `department` and then maps it to a prompt profile.
-
-Current behavior:
-
-- `marketing` department uses the marketing prompt profile
-- `generic` department uses the generic prompt profile
-- fallback uses the configured default prompt profile
-
-### 8.3 Prompt composition
-`PromptRegistry.build_system_prompt()` combines:
-
-- system prompt
-- guardrails
-- response style
-
-Context summary and summarization prompt are also sourced from the same YAML file.
-
-## 9. Provider Routing
-Provider routing is implemented in:
-
-- [router.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/llm/router.py)
-
-This file is the brain of the inference layer.
-
-### 9.1 Responsibilities
-- choose provider
-- choose model
-- choose prompt profile
-- decide direct file mode vs text context mode
-- invoke the provider
-- optionally invoke LangChain tool calling for file generation
-- merge usage data from multi-step flows
-
-### 9.2 Current provider behavior
-Supported providers:
+Supported provider names:
 
 - `gemini`
 - `bedrock`
 - `vertex`
 - `openai_like`
 
-Important default rules:
+Current routing rules:
 
-- `marketing` defaults to `bedrock`
-- `generic` can use the configured default provider
-- if `department=marketing` and `requested_provider=gemini`, router blocks that path
+- `department="marketing"` defaults to `bedrock`.
+- `department="generic"` uses the configured default provider unless the request overrides it.
+- `department="marketing"` with `provider="gemini"` is rejected by the router.
+- `requested_model` wins over provider defaults.
+- Generic Gemini defaults to `gemini-2.5-flash`.
+- Generic Bedrock defaults to `us.anthropic.claude-sonnet-4-6`.
+- Marketing Bedrock uses `MARKETING_BEDROCK_MODEL_ID` or the router fallback.
 
-### 9.3 Model selection
-The router resolves model in this order:
-
-1. `requested_model`
-2. department + provider-specific default
-3. provider default from settings
-
-### 9.4 Router output
-The router returns a `RouteResult` containing:
+`LLMRouter.route()` returns a `RouteResult` with:
 
 - `route_decision`
 - `provider_result`
@@ -291,557 +295,495 @@ The router returns a `RouteResult` containing:
 - optional `generated_summary`
 - optional `generated_file`
 
-## 10. LLM Execution Modes
-The service currently has multiple execution patterns.
+## 12. LLM Execution Modes
 
-### 10.1 Text context mode
-Used when:
+### Text context mode
 
-- there are no provider-native file attachments
-- or file content is converted into text context
+Used when there are no direct provider attachments, or when file content has been extracted and injected as prompt context.
 
-Implemented via:
+Core function:
 
-- [chains.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/llm/chains.py)
+- `marketing_agent/llm/chains.py::build_assistant_chain`
 
-### 10.2 Direct file mode
-Used when:
+Route marker:
 
-- provider supports native file attachments
-- uploaded files are passed directly to the model
+- `file_mode=text_context`
+
+### Direct file mode
+
+Used when attachments exist and the selected provider supports direct files.
 
 Examples:
 
-- Bedrock Converse `document` and `image` content blocks
-- Gemini uploaded file flow
+- Gemini multimodal messages
+- Bedrock Converse document and image content blocks
 
-### 10.3 Tool-calling mode
-The newer path for generated deliverables.
+Route marker:
 
-Used when the user explicitly asks for:
+- `file_mode=direct_file`
 
-- `docx`
-- `pptx`
-- `pdf`
-- `xlsx`
+### Tool-calling mode
 
-There are two variants:
+Used when the user requests an output file format and a matching LangChain tool exists.
 
-- `text_context_tool`
-- `direct_file_tool`
+Route markers:
 
-`direct_file_tool` means:
+- `file_mode=text_context_tool`
+- `file_mode=direct_file_tool`
 
-1. provider analyzes the attached file directly
-2. the result is fed into a LangChain tool-enabled follow-up step
-3. the tool writes the final output file
+In `direct_file_tool` mode:
 
-## 11. Tool-Based File Generation
-The current LangChain file tools are defined in:
+1. The provider analyzes attached files directly.
+2. The analysis is passed to a tool-enabled follow-up model call.
+3. The model calls a file-generation tool.
+4. The tool writes the file through `FileService`.
+5. The final chat response includes file metadata and download links.
 
-- [file_generation_tools.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/tools/file_generation_tools.py)
+## 13. Prompt System
 
-### 11.1 What these tools do
-They wrap file generation functions as `StructuredTool` objects for:
+Prompt file:
+
+- `marketing_agent/prompts/prompts.yaml`
+
+Prompt loader:
+
+- `marketing_agent/llm/prompt_registry.py`
+
+Profiles currently defined:
+
+- `marketing`
+- `generic`
+
+Prompt composition includes:
+
+- agent system prompt
+- prompt-level guardrails
+- response style
+- context header
+- summarization prompt
+- guardrail response strings
+
+Profile selection is done in `LLMRouter._resolve_prompt_profile()`.
+
+## 14. Guardrails
+
+File: `marketing_agent/llm/guardrails.py`
+
+The guardrail layer runs before any provider invocation.
+
+It blocks:
+
+- SQL injection-like patterns such as `union select`, `drop table`, and `or 1=1`
+- clearly unrelated out-of-scope hints when there is no business or Pramerica context
+
+It allows valid marketing, insurance, and business requests even if the wording is generic.
+
+## 15. Context And Sessions
+
+File: `marketing_agent/llm/context_manager.py`
+
+`ConversationContextManager.prepare()`:
+
+- fetches recent successful query logs for the same `user_id` and `session_id`
+- converts history into compact text
+- estimates context size
+- triggers rollover when the estimated context is above `CONTEXT_MAX_TOKENS`
+- creates a new rollover session id when needed
+
+When rollover is required, `LLMRouter` summarizes the old history and uses the summary as carried-forward context.
+
+## 16. File Handling
+
+File orchestration:
+
+- `marketing_agent/storage/file_service.py`
+
+`FileService` handles:
+
+- local or S3 backend selection
+- staging uploaded files
+- reading files for prompt context
+- preparing provider-native attachments
+- converting unsupported provider file types to PDF when possible
+- enforcing the `4_500_000` byte attachment limit
+- rendering output file bytes
+- writing generated outputs
+- picking non-overwriting session output filenames
+
+Provider direct-file support is currently:
+
+- Gemini: PDF and common image formats
+- Bedrock: PDF, CSV, Word, Excel, HTML, Markdown, text/log files, and common image formats
+- Other providers: treated as direct-file capable by the local support check, though actual provider behavior still depends on the provider implementation
+
+## 17. Storage Backends
+
+File: `marketing_agent/storage/backends.py`
+
+Backends:
+
+- `LocalStorageBackend`
+- `S3StorageBackend`
+
+Configuration:
+
+- `MARKETING_STORAGE_BACKEND=local|s3`
+- local root: `MARKETING_LOCAL_STORAGE_ROOT`
+- local input/output directories: `MARKETING_LOCAL_INPUT_DIR`, `MARKETING_LOCAL_OUTPUT_DIR`
+- S3 bucket and prefixes: `MARKETING_S3_BUCKET`, `MARKETING_S3_INPUT_PREFIX`, `MARKETING_S3_OUTPUT_PREFIX`
+
+## 18. File Extraction And Rendering
+
+Text extraction:
+
+- `marketing_agent/storage/text_extractors.py`
+
+Supported extraction targets include:
+
+- PDF
+- DOCX
+- PPTX
+- XLSX
+- JSON
+- text-like files
+
+Output renderers:
+
+- `marketing_agent/storage/docx_generation.py`
+- `marketing_agent/storage/pptx_generation.py`
+- `marketing_agent/storage/pdf_generation.py`
+- `marketing_agent/storage/xlsx_generation.py`
+
+The renderers receive model-generated content and produce bytes for the requested file type.
+
+## 19. Tool Calling For File Generation
+
+File:
+
+- `marketing_agent/tools/file_generation_tools.py`
+
+Available tools:
 
 - `generate_docx_file`
 - `generate_pptx_file`
 - `generate_pdf_file`
 - `generate_xlsx_file`
 
-### 11.2 Why this was added
-Earlier, file generation was purely post-processing logic. The newer design moves toward:
+Tool inputs include:
 
-- model decides when to call a generation tool
-- output file writing happens through one consistent service
-- normal chat and attached-file flows converge
+- `generated_text`
+- `session_id`
+- optional `output_file_path`
 
-### 11.3 Important design note
-The tool does not generate the content itself.
+The tools do not decide the content. The model provides content, and the tools render/write the file through `FileService`.
 
-It receives final content from the model and then:
+## 20. Logging And Observability
 
-- writes the file via `FileService`
-- returns metadata such as path and storage URI
+### Mongo store
 
-This separation is important:
+File: `marketing_agent/db/mongo.py`
 
-- LLM creates content
-- storage/generator code creates files
-
-## 12. File Processing Architecture
-Main file orchestration lives in:
-
-- [file_service.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/storage/file_service.py)
-
-### 12.1 Responsibilities
-- stage input files
-- read stored files
-- load attachments for providers
-- convert unsupported provider/file combinations to PDF when possible
-- enforce attachment size limits
-- write output files
-- choose local or S3 storage backend
-
-### 12.2 File preparation flow
-```mermaid
-flowchart TD
-    A[Uploaded file] --> B[Stage to backend]
-    B --> C[Resolve provider support]
-    C -->|Supported| D[Use native attachment]
-    C -->|Unsupported but convertible| E[Extract text]
-    E --> F[Convert extracted text to PDF]
-    F --> G[Use PDF attachment]
-    C -->|Too large / empty / unreadable| H[Raise controlled error]
-```
-
-### 12.3 Supported storage backends
-Configured in:
-
-- `MARKETING_STORAGE_BACKEND`
-
-Implementations:
-
-- local filesystem
-- S3
-
-Storage backend code lives in:
-
-- `marketing_agent/storage/backends.py`
-
-### 12.4 Input and output naming
-Input files are staged with a prefixed safe filename.
-
-Output files use session-based rolling names like:
-
-- `session_id_response_1.docx`
-- `session_id_response_2.pptx`
-
-This prevents overwriting previous outputs within the same session.
-
-## 13. File Extraction and Conversion
-Text extraction lives in:
-
-- `marketing_agent/storage/text_extractors.py`
-
-### 13.1 What it supports
-- PDF text extraction
-- DOCX text extraction
-- PPTX text extraction
-- XLSX text extraction
-- JSON / text-like content reading
-
-### 13.2 Why it matters
-This module is used when:
-
-- file content must be added to prompt context
-- unsupported file types must be converted into a PDF-compatible representation
-- provider-native file support is unavailable or insufficient
-
-## 14. Output File Generators
-### 14.1 Word
-- `marketing_agent/storage/docx_generation.py`
-
-Current capabilities:
-
-- heading conversion
-- paragraph conversion
-- list conversion
-- markdown table to real Word table conversion
-- page border styling
-
-### 14.2 PowerPoint
-- `marketing_agent/storage/pptx_generation.py`
-
-Current capabilities:
-
-- branded Pramerica visual styling
-- multiple slide layouts
-- structured content rendering
-
-### 14.3 PDF
-- `marketing_agent/storage/pdf_generation.py`
-
-Current capabilities:
-
-- structured headings and paragraphs
-- lists
-- markdown table rendering into bordered layouts
-
-### 14.4 Excel
-- `marketing_agent/storage/xlsx_generation.py`
-
-Used for generating structured spreadsheet-style outputs from model-produced content.
-
-## 15. Context and Session Handling
-Context handling lives in:
-
-- `marketing_agent/llm/context_manager.py`
-
-### 15.1 What it does
-- fetches recent chat turns for the same `user_id + session_id`
-- builds conversation history
-- manages session rollover when context gets too large
-- persists session summaries
-
-### 15.2 Important behavior
-Context is retained by session unless disabled by request.
-
-The system tries to ensure:
-
-- latest user question is always prioritized
-- prior history is reference only
-
-This is also reinforced in prompt construction.
-
-## 16. Guardrails
-Guardrail logic is in:
-
-- `marketing_agent/llm/guardrails.py`
-
-This layer is used before provider invocation.
-
-Examples of guardrail intent:
-
-- block suspicious SQL-injection-like patterns
-- reject certain unsupported or unsafe requests
-- keep assistant behavior within expected business scope
-
-There are also prompt-level guardrails inside `prompts.yaml`.
-
-## 17. Logging, Observability, and MongoDB
-### 17.1 Mongo wrapper
-Database access lives in:
-
-- [mongo.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/db/mongo.py)
-
-`MongoStore` provides collection access for:
+`MongoStore` exposes:
 
 - `users`
 - `query_logs`
 - `cost_logs`
 - `vector_docs`
 
-### 17.2 Query logger
-Request logging lives in:
+It also creates useful indexes on startup.
 
-- [query_logger.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/observability/query_logger.py)
+### Query logger
 
-On success it writes:
+File: `marketing_agent/observability/query_logger.py`
 
-- user info
+On success, it writes:
+
+- user document update
 - query log
 - cost log
 
-On failure it writes:
+On failure, it writes:
 
-- failed query log with `provider=unknown`, `model=unknown`, and `route_decision=failed_before_provider`
+- failed query log with `status="error"`
+- `provider="unknown"`
+- `model="unknown"`
+- `route_decision="failed_before_provider"`
 
-### 17.3 Request context
-Each request is given lightweight request metadata by middleware.
+### Request context
 
-This is used so Mongo write logs can include:
+File: `marketing_agent/observability/request_context.py`
 
-- HTTP method
-- request path
+The middleware in `main.py` stores method/path context for observability during request handling.
 
-### 17.4 LangSmith
-LangSmith tracing can be enabled via settings and environment variables.
+### LangSmith
 
-The app configures tracing very early during startup.
+File: `marketing_agent/observability/langsmith_tracing.py`
 
-## 18. Cost Tracking
-Cost calculation lives in:
+Tracing is configured during startup if enabled by settings.
+
+## 21. Cost And Quota
+
+### Cost calculation
+
+File:
 
 - `marketing_agent/llm/cost_tracking.py`
 
-API reporting lives in:
-
-- `marketing_agent/api/routes_cost.py`
-
-### 18.1 How cost is computed
-Cost is derived from:
+Cost uses:
 
 - provider
 - model
 - token usage
-- pricing map from `MARKETING_MODEL_PRICING_JSON`
-
-### 18.2 Important behavior
-If stored `cost_usd` is missing in historical logs, reporting endpoints can recalculate it from current pricing config.
-
-## 19. Usage Quota Governance
-Quota logic lives in:
-
-- [usage_quota.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/governance/usage_quota.py)
-
-### 19.1 Current quota model
-Quota is currently enforced primarily on:
-
-- monthly `cost_usd`
-
-Warnings are triggered at:
-
-- 75%
-- 90%
-
-Requests are blocked at:
-
-- 100% and above
-
-### 19.2 Inactive users
-If user document has `is_active = false`, requests are blocked.
-
-### 19.3 Usage monitoring API
-Available from:
-
-- `/cost/usage-monitor`
-
-This can return:
-
-- a single-user quota status
-- a dashboard-style response for all users
-
-## 20. Configuration
-Central configuration lives in:
-
-- [config.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/core/config.py)
-
-### 20.1 Important configuration categories
-- API prefix
-- provider credentials and defaults
-- MongoDB connection
-- prompt file selection
-- pricing config
-- temperature and context limits
-- storage backend
-- S3 details
-- usage limits
-- LangSmith configuration
-
-### 20.2 Most important env vars to know first
-- `MARKETING_API_PREFIX`
-- `MARKETING_DEFAULT_PROVIDER`
-- `MARKETING_GEMINI_MODEL`
-- `MARKETING_BEDROCK_MODEL_ID`
-- `AWS_REGION`
-- `GEMINI_API_KEY`
-- `MARKETING_BEDROCK_API_KEY`
-- `MONGODB_URI`
-- `MONGODB_DB_NAME`
 - `MARKETING_MODEL_PRICING_JSON`
-- `MARKETING_STORAGE_BACKEND`
-- `MARKETING_S3_BUCKET`
-- `MARKETING_LOCAL_STORAGE_ROOT`
-- `MARKETING_DEFAULT_TEMPERATURE`
-- `MARKETING_MONTHLY_COST_LIMIT_USD`
 
-## 21. API Surface
-The two main routers are:
+Pricing lookup supports keys like:
 
-- `routes_chat.py`
-- `routes_cost.py`
-
-### 21.1 Core chat endpoints
-- `POST /chat`
-- `POST /chat-with-files` if still present for backward compatibility
-- `GET /history`
-- `GET /sessions`
-- session deactivation endpoint
-- file list/download endpoint
-- health endpoint
-
-### 21.2 Cost/governance endpoints
-- `GET /cost/summary`
-- `GET /cost/models`
-- `GET /cost/usage-monitor`
-
-## 22. Response Design
-The main response object is `ChatResponse`.
-
-Common response fields:
-
-- `request_id`
-- `reply`
-- `provider`
+- `provider:model`
 - `model`
-- `route_decision`
-- `usage`
-- `cost_usd`
-- `output_file_uri`
-- `output_file_type`
-- `output_file_name`
-- `download_url`
-- `download_anchor`
 
-When output file generation succeeds, frontend can use:
+### Cost APIs
 
-- `download_url`
-- or `download_anchor`
+File:
 
-## 23. Common End-to-End Scenarios
-### 23.1 Plain chat
-User sends normal text.
-
-Flow:
-
-- parse request
-- apply guardrails and quota
-- prepare context
-- route to provider
-- log response and cost
-
-### 23.2 Chat with attached file
-User uploads a file and asks a question about it.
-
-Flow:
-
-- file is staged
-- provider-native direct file mode is used if supported
-- otherwise extracted text is used
-- response is logged
-
-### 23.3 Generate a file without attachments
-User asks:
-
-- "Create a proposal in docx"
-- "Generate a ppt on X"
-
-Flow:
-
-- output format inferred from message
-- LangChain tool-enabled path used
-- tool writes output file
-- download URL returned
-
-### 23.4 Analyze an attached file and generate a new output file
-User uploads a file and asks:
-
-- "Summarize this and export as pdf"
-- "Create a PowerPoint from this document"
-
-Flow:
-
-1. provider analyzes file directly
-2. tool-enabled follow-up generates final output file
-3. output file metadata is returned
-
-## 24. Where to Make Changes
-### 24.1 Change prompt behavior
-- `marketing_agent/prompts/prompts.yaml`
-- `marketing_agent/llm/prompt_registry.py`
-
-### 24.2 Change provider/model selection rules
-- `marketing_agent/llm/router.py`
-
-### 24.3 Change multipart or JSON request behavior
-- `marketing_agent/api/routes_chat.py`
-
-### 24.4 Change download link or reply formatting
-- `marketing_agent/api/chat_helpers.py`
-
-### 24.5 Change file support, conversion, or size handling
-- `marketing_agent/storage/file_service.py`
-- `marketing_agent/storage/text_extractors.py`
-
-### 24.6 Change document/ppt/pdf/xlsx rendering
-- `marketing_agent/storage/docx_generation.py`
-- `marketing_agent/storage/pptx_generation.py`
-- `marketing_agent/storage/pdf_generation.py`
-- `marketing_agent/storage/xlsx_generation.py`
-
-### 24.7 Change cost or quota behavior
-- `marketing_agent/llm/cost_tracking.py`
-- `marketing_agent/governance/usage_quota.py`
 - `marketing_agent/api/routes_cost.py`
 
-### 24.8 Change Mongo logging structure
-- `marketing_agent/observability/query_logger.py`
-- `marketing_agent/db/schemas.py`
+The cost APIs summarize stored cost logs and can recalculate missing historical cost values from current pricing configuration.
 
-## 25. Common Debugging Playbook
-### 25.1 Provider not configured
-Check:
+### Quota enforcement
 
-- credentials in `.env`
-- provider enablement flags
-- model IDs
-- `GET /health`
+File:
 
-### 25.2 Files not downloading
-Check:
+- `marketing_agent/governance/usage_quota.py`
 
-- `output_file_uri` in query log metadata
-- storage backend mode
-- download URL generation in `chat_helpers.py`
-- local file existence or S3 object existence
+Quota checks:
 
-### 25.3 Wrong prompt/profile behavior
-Check:
+- inactive users are blocked
+- monthly cost quota blocks at or above 100 percent
+- warning starts at 75 percent
+- stronger warning starts at 90 percent
+- daily request count is calculated and returned, but the current block condition is monthly cost
 
-- `department` normalization in DTO
-- prompt profile resolution in router
-- prompt YAML content
+Limits can come from:
 
-### 25.4 Cost missing
-Check:
+- user document
+- department document
+- default settings
 
+## 22. Configuration
+
+File:
+
+- `marketing_agent/core/config.py`
+
+Settings are loaded from `.env` and `.env.development`, or `.env.production` when `ENV=production`.
+
+Important environment variables:
+
+- `MARKETING_API_PREFIX`
+- `MARKETING_DEFAULT_PROVIDER`
+- `ENABLE_PROVIDER_GEMINI`
+- `ENABLE_PROVIDER_BEDROCK`
+- `ENABLE_PROVIDER_VERTEX`
+- `ENABLE_PROVIDER_OPENAI_LIKE`
+- `GEMINI_API_KEY`
+- `MARKETING_GEMINI_MODEL`
+- `AWS_REGION`
+- `MARKETING_BEDROCK_API_KEY`
+- `MARKETING_BEDROCK_MODEL_ID`
+- `GOOGLE_PROJECT_ID`
+- `VERTEX_LOCATION`
+- `MARKETING_VERTEX_MODEL`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `MARKETING_OPENAI_MODEL`
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+- `MARKETING_COLLECTION_PREFIX`
 - `MARKETING_MODEL_PRICING_JSON`
-- model name matching
-- provider/model in stored cost log
+- `MARKETING_STORAGE_BACKEND`
+- `MARKETING_LOCAL_STORAGE_ROOT`
+- `MARKETING_S3_BUCKET`
+- `CONTEXT_MAX_TOKENS`
+- `CONTEXT_HISTORY_TURNS`
+- `MARKETING_DAILY_REQUEST_LIMIT`
+- `MARKETING_MONTHLY_COST_LIMIT_USD`
+- `MARKETING_USAGE_WARNING_PERCENT`
+- `LANGSMITH_API_KEY`
+- `LANGSMITH_PROJECT`
+- `ENABLE_LANGSMITH_TRACING`
 
-### 25.5 Attached file errors
+## 23. Common Scenarios
+
+### Plain chat
+
+Flow:
+
+1. Request is parsed into `ChatRequest`.
+2. Quota and guardrails run.
+3. Small-talk shortcut may return immediately.
+4. Context is prepared.
+5. Router invokes selected provider.
+6. Query and cost are logged.
+
+### Chat with file upload
+
+Flow:
+
+1. Multipart parser stages uploaded files through `FileService.stage_input_file()`.
+2. `_execute_chat()` loads provider attachments.
+3. Provider direct-file mode is used when possible.
+4. Otherwise extracted file text is injected into prompt context.
+5. Response is logged.
+
+### Generate a file
+
+Example prompts:
+
+- `Create a campaign brief as docx`
+- `Generate a ppt on this product`
+- `Export this summary as pdf`
+- `Make an excel table`
+
+Flow:
+
+1. `_infer_output_format_from_message()` detects the file type.
+2. `_wants_file_generation()` confirms file-generation intent.
+3. Router uses `invoke_assistant_with_file_tool()`.
+4. Model calls the matching LangChain tool.
+5. Tool writes the file through `FileService`.
+6. Response includes `output_file_uri`, `output_file_type`, `output_file_name`, `download_url`, and `download_anchor`.
+
+### Analyze uploaded file and generate a new file
+
+Flow:
+
+1. Uploaded file is staged.
+2. Provider analyzes the attachment directly when supported.
+3. Analysis is passed into a tool-enabled follow-up call.
+4. The selected generation tool writes the output file.
+5. Chat response returns both answer text and download metadata.
+
+## 24. Where To Make Changes
+
+- Change endpoint behavior: `marketing_agent/api/routes_chat.py`
+- Change request helper logic: `marketing_agent/api/chat_helpers.py`
+- Change provider routing or model defaults: `marketing_agent/llm/router.py`
+- Change prompt wording: `marketing_agent/prompts/prompts.yaml`
+- Change prompt loading/composition: `marketing_agent/llm/prompt_registry.py`
+- Change guardrails: `marketing_agent/llm/guardrails.py`
+- Change context retention/rollover: `marketing_agent/llm/context_manager.py`
+- Change provider-specific implementation: `marketing_agent/llm/providers/*.py`
+- Change file upload, conversion, output writing: `marketing_agent/storage/file_service.py`
+- Change local/S3 behavior: `marketing_agent/storage/backends.py`
+- Change generated file rendering: `marketing_agent/storage/*_generation.py`
+- Change LangChain tools: `marketing_agent/tools/file_generation_tools.py`
+- Change Mongo document shape: `marketing_agent/db/schemas.py`
+- Change logging: `marketing_agent/observability/query_logger.py`
+- Change cost summary APIs: `marketing_agent/api/routes_cost.py`
+- Change quota logic: `marketing_agent/governance/usage_quota.py`
+- Change settings/env names: `marketing_agent/core/config.py`
+
+## 25. Debugging Playbook
+
+### Small-talk still calls Gemini or another LLM
+
 Check:
 
-- provider support for the given file type
-- auto-conversion logic in `file_service.py`
-- attachment size after conversion
-- error mapping in `chat_helpers.py`
+- the running Uvicorn process was restarted after code changes
+- message matches `_generic_small_talk_reply()` patterns
+- request does not include files
+- response should show `provider="generic_response"`
 
-### 25.6 Tool-generated file missing
+### Provider not configured
+
 Check:
 
-- inferred output format from message
-- whether request went through `text_context_tool` or `direct_file_tool`
-- `generated_file` returned by router
-- backend write result in `FileService`
+- `GET /health`
+- provider enablement flags
+- provider API keys
+- region/project/model settings
 
-## 26. Local Run Instructions
-From repo root:
+### Marketing request rejects Gemini
+
+This is current router behavior. Marketing defaults to Bedrock and explicitly rejects `department="marketing"` with Gemini.
+
+### File upload fails
+
+Check:
+
+- file is non-empty
+- file size after preparation is under the attachment limit
+- provider direct-file support
+- conversion path in `FileService._prepare_attachment_for_provider()`
+- user-friendly error mapping in `chat_helpers.py`
+
+### Generated file missing
+
+Check:
+
+- message contains both generation intent and a target file type
+- route decision includes `text_context_tool` or `direct_file_tool`
+- matching tool exists in `LLMRouter.file_generation_tools`
+- `FileService.write_output()` completed
+- storage backend path or S3 object exists
+
+### Cost missing or zero
+
+Check:
+
+- provider returned usage metadata
+- `MARKETING_MODEL_PRICING_JSON` contains matching `provider:model` or `model`
+- cost logs were written
+- small-talk and guard responses intentionally have zero cost
+
+### Wrong prompt behavior
+
+Check:
+
+- request `department`
+- `ChatRequest.normalize_department()`
+- `LLMRouter._resolve_prompt_profile()`
+- profile content in `prompts.yaml`
+
+## 26. Local Run
+
+From the repo root:
 
 ```powershell
-cd c:\Users\P043123\Work_Projects\Agentic-Ai
+cd C:\Users\P043123\Work_Projects\Agentic-Ai
 .\venv\Scripts\Activate.ps1
 python -m uvicorn marketing_agent.main:app --reload --port 8004
 ```
 
-## 27. Recommended Onboarding Path for a New Engineer
-Read these in order:
+OpenAPI docs are available at:
 
-1. [main.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/main.py)
-2. [dependencies.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/dependencies.py)
-3. [routes_chat.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/api/routes_chat.py)
-4. [router.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/llm/router.py)
-5. [file_service.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/storage/file_service.py)
-6. [file_generation_tools.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/tools/file_generation_tools.py)
-7. [prompts.yaml](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/prompts/prompts.yaml)
-8. [query_logger.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/observability/query_logger.py)
-9. [routes_cost.py](c:/Users/P043123/Work_Projects/Agentic-Ai/marketing_agent/api/routes_cost.py)
+```text
+http://localhost:8004/docs
+```
 
-If someone understands those files, they can already work productively in this codebase.
+## 27. Recommended Reading Order
 
-## 28. Current Technical Direction
-The codebase is moving toward a clearer separation of concerns:
+1. `marketing_agent/main.py`
+2. `marketing_agent/dependencies.py`
+3. `marketing_agent/api/routes_chat.py`
+4. `marketing_agent/api/chat_helpers.py`
+5. `marketing_agent/llm/router.py`
+6. `marketing_agent/llm/chains.py`
+7. `marketing_agent/storage/file_service.py`
+8. `marketing_agent/tools/file_generation_tools.py`
+9. `marketing_agent/prompts/prompts.yaml`
+10. `marketing_agent/observability/query_logger.py`
+11. `marketing_agent/api/routes_cost.py`
 
-- routing and business decisions in router/API
-- provider-specific handling in provider modules
-- file generation through tool-based orchestration
-- storage abstracted behind `FileService`
+## 28. Current Design Direction
 
-The most important active design trend is this:
+The current architecture is moving toward:
 
-- file generation is no longer just post-processing
-- it is becoming an explicit tool-calling workflow
+- API routes for request parsing and response assembly
+- `LLMRouter` for provider/model/workflow decisions
+- provider modules for backend-specific API behavior
+- `FileService` for storage and file preparation
+- LangChain tools for explicit file generation
+- MongoDB logging as the source for history, costs, and usage monitoring
 
-That is the direction future enhancements should align with.
-
+Future work should preserve those boundaries where possible.
